@@ -1,4 +1,4 @@
-module github.com/go-gota/gota
+module github.com/Luokun2016/go-gota
 
 go 1.16
 
