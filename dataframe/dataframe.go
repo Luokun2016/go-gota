@@ -2632,7 +2632,7 @@ func (df DataFrame) buildGeneratedCols(aggregatedDF DataFrame, columns []string,
 			aggregatedValueColname := buildAggregatedColname(value.Colname, value.AggregationType)
 			tmpColName := strings.Join(append(tmpColnames, aggregatedValueColname), "_")
 			generatedColnames = append(generatedColnames, tmpColName)
-			generatedColnameVals[tmpColName] = append(tmpColnames, aggregatedValueColname)
+			generatedColnameVals[tmpColName] = tmpColnames
 			generatedColtyps = append(generatedColtyps, df.Col(value.Colname).Type())
 		}
 	}

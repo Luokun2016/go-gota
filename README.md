@@ -262,13 +262,15 @@ aggre := groups.Aggregation([]AggregationType{Aggregation_MAX, Aggregation_MIN},
 #### Pivot
 
 ```go
-pivot := df.Pivot(
+sorts := map[string]int{"C": -1}   // -1 desc  other asc
+pivot, columVals := df.Pivot(
     []string{"A", "B"}, // rows
     []string{"C", "D"}, // columns
     []PivotValue{       // values
       {Colname: "E", AggregationType: Aggregation_SUM},
       {Colname: "F", AggregationType: Aggregation_COUNT},
-})
+},
+sorts)
 ```
 
 #### Arrange

@@ -3081,16 +3081,17 @@ func TestDataFrame_Pivot(t *testing.T) {
 }
 
 func TestDataFrame_Pivot1(t *testing.T) {
-	xFields := []string{"Sn"}
-	yFields := []string{"Time", "ProductName"}
+	yFields := []string{}
+	xFields := []string{"Time", "ProductName"}
 	//metrics := []string{"Total"}
-	sorts := make(map[string]int)
+	sorts := map[string]int{"Sn": -1}
 	jsonStr := `[{"ProductName":"康师傅泡椒面","Sn":1001,"Time":"2023-04-12","Total":60},{"ProductName":"康师傅泡椒面","Sn":1001,"Time":"2023-04-13","Total":60},{"ProductName":"康师傅红茶","Sn":1001,"Time":"2022-04-12","Total":50},{"ProductName":"康师傅红茶","Sn":1001,"Time":"2023-04-11","Total":50},{"ProductName":"康师傅红茶","Sn":1001,"Time":"2023-04-12","Total":50},{"ProductName":"康师傅红茶","Sn":1001,"Time":"2023-04-13","Total":50},{"ProductName":"康师傅绿茶","Sn":1001,"Time":"2023-04-12","Total":50},{"ProductName":"康师傅绿茶","Sn":1001,"Time":"2023-04-13","Total":50},{"ProductName":"康师傅红茶","Sn":1002,"Time":"2023-04-12","Total":50},{"ProductName":"康师傅红茶","Sn":1002,"Time":"2023-04-13","Total":50},{"ProductName":"康师傅绿茶","Sn":1002,"Time":"2021-04-13","Total":50},{"ProductName":"康师傅绿茶","Sn":1002,"Time":"2023-04-12","Total":50}]`
 	df := ReadJSON(strings.NewReader(jsonStr))
 	newDf, generatedColnameVals := df.Pivot(xFields,
 		yFields,
 		[]PivotValue{
 			{Colname: "Total", AggregationType: Aggregation_SUM},
+			{Colname: "Sn", AggregationType: Aggregation_SUM},
 		},
 		sorts)
 
