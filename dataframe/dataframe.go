@@ -389,6 +389,7 @@ func (df DataFrame) GroupBy(colnames ...string) *Groups {
 	}
 	groupDataFrame := make(map[string]DataFrame)
 	groupSeries := make(map[string][]map[string]interface{})
+	groupSeriesKeyVals := make(map[string][]series.Element)
 	// Check that colname exist on dataframe
 	for _, c := range colnames {
 		if idx := findInStringSlice(c, df.Names()); idx == -1 {
@@ -399,26 +400,38 @@ func (df DataFrame) GroupBy(colnames ...string) *Groups {
 	for _, s := range df.Maps() {
 		// Gen Key for per Series
 		key := ""
+		colnamevals := make([]series.Element, 0)
 		for i, c := range colnames {
 			format := ""
+			elType := series.String
 			if i == 0 {
 				format = "%s%"
 			} else {
 				format = "%s_%"
 			}
 			switch s[c].(type) {
-			case string, bool:
+			case string:
 				format += "s"
+				elType = series.String
+			case bool:
+				format += "s"
+				elType = series.Bool
 			case int, int16, int32, int64:
 				format += "d"
+				elType = series.Int
 			case float32, float64:
 				format += "f"
+				elType = series.Float
 			default:
 				return &Groups{Err: fmt.Errorf("GroupBy: type not found")}
 			}
+
+			el := series.New([]interface{}{s[c]}, elType, "").Elem(0)
+			colnamevals = append(colnamevals, el)
 			key = fmt.Sprintf(format, key, s[c])
 		}
 		groupSeries[key] = append(groupSeries[key], s)
+		groupSeriesKeyVals[key] = colnamevals
 	}
 
 	// Save column types
@@ -430,7 +443,7 @@ func (df DataFrame) GroupBy(colnames ...string) *Groups {
 	for k, cMaps := range groupSeries {
 		groupDataFrame[k] = LoadMaps(cMaps, WithTypes(colTypes))
 	}
-	groups := &Groups{groups: groupDataFrame, colnames: colnames}
+	groups := &Groups{groups: groupDataFrame, colnames: colnames, colnamevals: groupSeriesKeyVals}
 	return groups
 }
 
@@ -452,6 +465,7 @@ const (
 type Groups struct {
 	groups      map[string]DataFrame
 	colnames    []string
+	colnamevals map[string][]series.Element
 	aggregation DataFrame
 	Err         error
 }
@@ -2368,30 +2382,61 @@ type PivotValue struct {
 }
 
 // Pivot Create a dataframe like spreadsheet-style pivot table
-func (df DataFrame) Pivot(rows []string, columns []string, values []PivotValue) DataFrame {
+func (df DataFrame) Pivot(rows []string, columns []string, values []PivotValue, sorts map[string]int) (DataFrame, map[string][]string) {
 	err := df.checkPivotParams(rows, columns, values)
+	generatedColnameVals := make(map[string][]string)
 	if err != nil {
-		return DataFrame{Err: err}
+		return DataFrame{Err: err}, generatedColnameVals
 	}
 
 	aggregatedDF := df.aggregateByRowsAndColumns(rows, columns, values)
 	if aggregatedDF.Err != nil {
-		return aggregatedDF
+		return aggregatedDF, generatedColnameVals
 	}
 
-	generatedColnames, generatedColtyps := df.buildGeneratedCols(aggregatedDF, columns, values)
+	generatedColnames, generatedColtyps, generatedColnameVals := df.buildGeneratedCols(aggregatedDF, columns, values, sorts)
 
 	var rowGroups map[string]DataFrame
+	var rowKeyVals map[string][]series.Element
 	if len(rows) == 0 {
 		rowGroups = map[string]DataFrame{"": aggregatedDF}
 	} else {
-		rowGroups = aggregatedDF.GroupBy(rows...).groups
+		rowGroup := aggregatedDF.GroupBy(rows...)
+		rowGroups = rowGroup.groups
+		rowKeyVals = rowGroup.colnamevals
 	}
 	rowGroupsKeys := make([]string, 0, len(rowGroups))
 	for key := range rowGroups {
 		rowGroupsKeys = append(rowGroupsKeys, key)
 	}
-	sort.Strings(rowGroupsKeys)
+
+	// sort row
+	sort.SliceStable(rowGroupsKeys, func(i, j int) bool {
+		elemsI := rowKeyVals[rowGroupsKeys[i]]
+		elemsJ := rowKeyVals[rowGroupsKeys[j]]
+		for idx := range elemsI {
+			order := getSort(sorts, rows[idx])
+			if elemsI[idx].Less(elemsJ[idx]) {
+				if order == 1 {
+					return true
+				} else {
+					return false
+				}
+			} else if elemsI[idx].Greater(elemsJ[idx]) {
+				if order == 1 {
+					return false
+				} else {
+					return true
+				}
+			} else {
+				continue
+			}
+		}
+		// all elements are equal
+		return false
+	})
+
+	// sort.Strings(rowGroupsKeys)
 	newColnames, newColElements := df.buildNewCols(rows, generatedColnames, len(rowGroupsKeys))
 
 	rowIdx := 0
@@ -2436,7 +2481,7 @@ func (df DataFrame) Pivot(rows []string, columns []string, values []PivotValue) 
 		newColumnSlice = append(newColumnSlice, series.New(newColElements[i], typ, colname))
 	}
 
-	return New(newColumnSlice...)
+	return New(newColumnSlice...), generatedColnameVals
 }
 
 func (df *DataFrame) checkPivotParams(rows []string, columns []string, values []PivotValue) error {
@@ -2520,19 +2565,21 @@ func (df DataFrame) aggregateByRowsAndColumns(rows []string, columns []string, v
 	return groups.Aggregation(aggregationTypes, valueColnames)
 }
 
-func (df DataFrame) buildGeneratedCols(aggregatedDF DataFrame, columns []string, values []PivotValue) ([]string, []series.Type) {
+func (df DataFrame) buildGeneratedCols(aggregatedDF DataFrame, columns []string, values []PivotValue, sorts map[string]int) ([]string, []series.Type, map[string][]string) {
 	if len(columns) == 0 {
 		generatedColnames := make([]string, 0, len(values))
 		generatedColtyps := make([]series.Type, 0, len(values))
+		generatedColnameVals := make(map[string][]string)
 		for _, value := range values {
 			aggregatedValueColname := buildAggregatedColname(value.Colname, value.AggregationType)
 			generatedColnames = append(generatedColnames, aggregatedValueColname)
 			generatedColtyps = append(generatedColtyps, df.Col(value.Colname).Type())
 		}
-		return generatedColnames, generatedColtyps
+		return generatedColnames, generatedColtyps, generatedColnameVals
 	}
 
-	columnGroups := aggregatedDF.GroupBy(columns...).groups
+	groups := aggregatedDF.GroupBy(columns...)
+	columnGroups := groups.groups
 	generatedColElemsList := make([][]series.Element, 0, len(columnGroups))
 	for _, columnGroupDf := range columnGroups {
 		columnStrValues := make([]string, 0, len(columns))
@@ -2545,15 +2592,26 @@ func (df DataFrame) buildGeneratedCols(aggregatedDF DataFrame, columns []string,
 	}
 
 	// sort generatedColElemsList by elements
-	sort.Slice(generatedColElemsList, func(i, j int) bool {
+	sort.SliceStable(generatedColElemsList, func(i, j int) bool {
 		generatedColElemsI := generatedColElemsList[i]
 		generatedColElemsJ := generatedColElemsList[j]
 
 		for idx := range generatedColElemsI {
+			order := getSort(sorts, columns[idx])
 			if generatedColElemsI[idx].Less(generatedColElemsJ[idx]) {
-				return true
+				if order == 1 {
+					return true
+				} else {
+					return false
+				}
+
 			} else if generatedColElemsI[idx].Greater(generatedColElemsJ[idx]) {
-				return false
+				if order == 1 {
+					return false
+				} else {
+					return true
+				}
+
 			} else {
 				continue
 			}
@@ -2563,6 +2621,7 @@ func (df DataFrame) buildGeneratedCols(aggregatedDF DataFrame, columns []string,
 	})
 
 	generatedColnames := make([]string, 0, len(generatedColElemsList)*len(values))
+	generatedColnameVals := make(map[string][]string)
 	generatedColtyps := make([]series.Type, 0, len(generatedColElemsList)*len(values))
 	for _, generatedColElems := range generatedColElemsList {
 		tmpColnames := make([]string, 0, len(generatedColElems))
@@ -2573,10 +2632,11 @@ func (df DataFrame) buildGeneratedCols(aggregatedDF DataFrame, columns []string,
 			aggregatedValueColname := buildAggregatedColname(value.Colname, value.AggregationType)
 			tmpColName := strings.Join(append(tmpColnames, aggregatedValueColname), "_")
 			generatedColnames = append(generatedColnames, tmpColName)
+			generatedColnameVals[tmpColName] = append(tmpColnames, aggregatedValueColname)
 			generatedColtyps = append(generatedColtyps, df.Col(value.Colname).Type())
 		}
 	}
-	return generatedColnames, generatedColtyps
+	return generatedColnames, generatedColtyps, generatedColnameVals
 }
 
 func (df DataFrame) buildNewCols(rows []string, generatedColnames []string, rowCnt int) ([]string, [][]series.Element) {
@@ -2601,17 +2661,30 @@ var defaultFloatElem = series.New([]float64{0}, series.Float, "").Elem(0)
 var defaultBoolElem = series.New([]bool{false}, series.Bool, "").Elem(0)
 
 func getDefaultElem(tpe series.Type) series.Element {
-	switch tpe {
-	case series.String:
-		return defaultStringElem
-	case series.Int:
-		return defaultIntElem
-	case series.Float:
-		return defaultFloatElem
-	case series.Bool:
-		return defaultBoolElem
-	}
+	// switch tpe {
+	// case series.String:
+	// 	return defaultStringElem
+	// case series.Int:
+	// 	return defaultIntElem
+	// case series.Float:
+	// 	return defaultFloatElem
+	// case series.Bool:
+	// 	return defaultBoolElem
+	// }
 	return nil
+}
+
+// get sort asc=1; desc=-1
+func getSort(sorts map[string]int, col string) int {
+	if sorts == nil {
+		return 1
+	}
+
+	if val, ok := sorts[col]; ok {
+		return val
+	} else {
+		return 1
+	}
 }
 
 func strIndexInStrSlice(strSlice []string, str string) int {

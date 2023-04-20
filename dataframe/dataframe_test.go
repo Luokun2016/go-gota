@@ -3007,7 +3007,7 @@ func TestDataFrame_Pivot(t *testing.T) {
 		series.New([]string{"a", "b", "b"}, series.String, "A"),
 		series.New([]int{1, 2, 3}, series.Int, "B"),
 	)
-	newDF := df.Pivot([]string{"A"}, nil, []PivotValue{{Colname: "B", AggregationType: Aggregation_SUM}})
+	newDF, _ := df.Pivot([]string{"A"}, nil, []PivotValue{{Colname: "B", AggregationType: Aggregation_SUM}}, nil)
 	expectedRecords := [][]string{
 		{"A", "B_SUM"},
 		{"a", "1"},
@@ -3022,7 +3022,7 @@ func TestDataFrame_Pivot(t *testing.T) {
 		series.New([]string{"a", "b", "b"}, series.String, "A"),
 		series.New([]int{1, 2, 3}, series.Int, "B"),
 	)
-	newDF = df.Pivot(nil, []string{"A"}, []PivotValue{{Colname: "B", AggregationType: Aggregation_SUM}})
+	newDF, _ = df.Pivot(nil, []string{"A"}, []PivotValue{{Colname: "B", AggregationType: Aggregation_SUM}}, nil)
 	expectedRecords = [][]string{
 		{"a_B_SUM", "b_B_SUM"},
 		{"1", "5"},
@@ -3036,7 +3036,7 @@ func TestDataFrame_Pivot(t *testing.T) {
 		series.New([]string{"a", "b"}, series.String, "A"),
 		series.New([]int{1, 2}, series.Int, "B"),
 	)
-	newDF = df.Pivot(nil, nil, []PivotValue{{Colname: "B", AggregationType: Aggregation_SUM}})
+	newDF, _ = df.Pivot(nil, nil, []PivotValue{{Colname: "B", AggregationType: Aggregation_SUM}}, nil)
 	expectedRecords = [][]string{
 		{"B_SUM"},
 		{"3"},
@@ -3046,7 +3046,7 @@ func TestDataFrame_Pivot(t *testing.T) {
 	}
 
 	// case4, set all parameters
-	newDF = New(
+	newDF, _ = New(
 		series.New([]string{"A1", "A1", "A1", "A1", "A1", "A1", "A1"}, series.String, "A"),
 		series.New([]string{"B1", "B1", "B1", "B2", "B2", "B2", "B2"}, series.String, "B"),
 		series.New([]string{"C1", "C1", "C2", "C1", "C1", "C2", "C2"}, series.String, "C"),
@@ -3059,7 +3059,7 @@ func TestDataFrame_Pivot(t *testing.T) {
 		[]PivotValue{
 			{Colname: "E", AggregationType: Aggregation_SUM},
 			{Colname: "F", AggregationType: Aggregation_COUNT},
-		})
+		}, nil)
 	expectedRecords = [][]string{
 		{"A", "B", "C1_D1_E_SUM", "C1_D1_F_COUNT", "C1_D2_E_SUM", "C1_D2_F_COUNT", "C2_D1_E_SUM", "C2_D1_F_COUNT"},
 		{"A1", "B1", "1", "1", "2", "1", "3", "1"},
@@ -3074,8 +3074,26 @@ func TestDataFrame_Pivot(t *testing.T) {
 		series.New([]string{"a", "b"}, series.String, "A"),
 		series.New([]int{1, 2}, series.Int, "B"),
 	)
-	newDF = df.Pivot(nil, nil, nil)
+	newDF, _ = df.Pivot(nil, nil, nil, nil)
 	if newDF.Err == nil {
 		t.Fatalf("expect param error")
 	}
+}
+
+func TestDataFrame_Pivot1(t *testing.T) {
+	xFields := []string{"Sn"}
+	yFields := []string{"Time", "ProductName"}
+	//metrics := []string{"Total"}
+	sorts := make(map[string]int)
+	jsonStr := `[{"ProductName":"康师傅泡椒面","Sn":1001,"Time":"2023-04-12","Total":60},{"ProductName":"康师傅泡椒面","Sn":1001,"Time":"2023-04-13","Total":60},{"ProductName":"康师傅红茶","Sn":1001,"Time":"2022-04-12","Total":50},{"ProductName":"康师傅红茶","Sn":1001,"Time":"2023-04-11","Total":50},{"ProductName":"康师傅红茶","Sn":1001,"Time":"2023-04-12","Total":50},{"ProductName":"康师傅红茶","Sn":1001,"Time":"2023-04-13","Total":50},{"ProductName":"康师傅绿茶","Sn":1001,"Time":"2023-04-12","Total":50},{"ProductName":"康师傅绿茶","Sn":1001,"Time":"2023-04-13","Total":50},{"ProductName":"康师傅红茶","Sn":1002,"Time":"2023-04-12","Total":50},{"ProductName":"康师傅红茶","Sn":1002,"Time":"2023-04-13","Total":50},{"ProductName":"康师傅绿茶","Sn":1002,"Time":"2021-04-13","Total":50},{"ProductName":"康师傅绿茶","Sn":1002,"Time":"2023-04-12","Total":50}]`
+	df := ReadJSON(strings.NewReader(jsonStr))
+	newDf, generatedColnameVals := df.Pivot(xFields,
+		yFields,
+		[]PivotValue{
+			{Colname: "Total", AggregationType: Aggregation_SUM},
+		},
+		sorts)
+
+	fmt.Println(newDf.Records())
+	fmt.Println(generatedColnameVals)
 }
