@@ -472,12 +472,15 @@ type Groups struct {
 }
 
 // Aggregation :Aggregate dataframe by aggregation type and aggregation column name
-func (gps Groups) Aggregation(typs []AggregationType, colnames []string) DataFrame {
+func (gps Groups) Aggregation(typs []AggregationType, colnames []string, contactSeparators []string) DataFrame {
 	if gps.groups == nil {
 		return DataFrame{Err: fmt.Errorf("Aggregation: input is nil")}
 	}
 	if len(typs) != len(colnames) {
 		return DataFrame{Err: fmt.Errorf("Aggregation: len(typs) != len(colanmes)")}
+	}
+	if len(typs) != len(contactSeparators) {
+		return DataFrame{Err: fmt.Errorf("Aggregation: len(typs) != len(contactSeparators)")}
 	}
 	dfMaps := make([]map[string]interface{}, 0)
 	for _, df := range gps.groups {
@@ -511,7 +514,7 @@ func (gps Groups) Aggregation(typs []AggregationType, colnames []string) DataFra
 			case Aggregation_COUNT:
 				value = float64(curSeries.Len())
 			case Aggregation_CONCAT:
-				value = curSeries.ConcatString()
+				value = curSeries.ConcatString(contactSeparators[i])
 			default:
 				return DataFrame{Err: fmt.Errorf("Aggregation: this method %s not found", typs[i])}
 
@@ -2382,6 +2385,7 @@ func (df DataFrame) Describe() DataFrame {
 type PivotValue struct {
 	Colname         string
 	AggregationType AggregationType
+	ContactSparator interface{}
 }
 
 // Pivot Create a dataframe like spreadsheet-style pivot table
@@ -2544,6 +2548,7 @@ func (df *DataFrame) isValidColumnParam(usedColumnNames map[string]bool, colName
 func (df DataFrame) aggregateByRowsAndColumns(rows []string, columns []string, values []PivotValue) DataFrame {
 	valueColnames := make([]string, 0, len(values))
 	aggregationTypes := make([]AggregationType, 0, len(values))
+	contactSeparators := make([]string, 0, len(values))
 	for _, value := range values {
 		valueColnames = append(valueColnames, value.Colname)
 		if value.AggregationType == 0 {
@@ -2552,6 +2557,19 @@ func (df DataFrame) aggregateByRowsAndColumns(rows []string, columns []string, v
 		} else {
 			aggregationTypes = append(aggregationTypes, value.AggregationType)
 		}
+
+		var contactSeparator string // default contact separator is ','
+		if value.ContactSparator == nil {
+			contactSeparator = ","
+		} else {
+			cs, ok := value.ContactSparator.(string)
+			if !ok {
+				contactSeparator = ","
+			} else {
+				contactSeparator = cs
+			}
+		}
+		contactSeparators = append(contactSeparators, contactSeparator)
 	}
 
 	var selectedColnames []string
@@ -2563,14 +2581,14 @@ func (df DataFrame) aggregateByRowsAndColumns(rows []string, columns []string, v
 	}
 	if len(selectedColnames) == 0 {
 		t := Groups{groups: map[string]DataFrame{"": df}, colnames: valueColnames}
-		return t.Aggregation(aggregationTypes, valueColnames)
+		return t.Aggregation(aggregationTypes, valueColnames, contactSeparators)
 	}
 
 	groups := df.GroupBy(selectedColnames...)
 	if groups.Err != nil {
 		return DataFrame{Err: groups.Err}
 	}
-	return groups.Aggregation(aggregationTypes, valueColnames)
+	return groups.Aggregation(aggregationTypes, valueColnames, contactSeparators)
 }
 
 func (df DataFrame) buildGeneratedCols(aggregatedDF DataFrame, columns []string, values []PivotValue, sorts map[string]int) ([]string, []series.Type, map[string][]string) {
