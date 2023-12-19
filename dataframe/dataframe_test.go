@@ -2964,15 +2964,47 @@ func TestDataFrame_GroupBy(t *testing.T) {
 	}
 }
 
+func TestAggregateByRowsAndColumns(t *testing.T) {
+	df := New(
+		series.New([]string{"b", "a", "b", "a", "b"}, series.String, "key1"),
+		series.New([]int{1, 2, 1, 2, 2}, series.Int, "key2"),
+		series.New([]float64{3.0, 4.0, 5.3, 3.2, 1.2}, series.Float, "values"),
+		series.New([]float64{3.0, 4.0, 5.3, 3.2, 1.2}, series.Float, "values2"),
+		series.New([]string{"a", "b", "c", "d", "e"}, series.String, "contact_test"),
+		series.New([]string{"a", "b", "c", "d", "e"}, series.String, "contact_test_2"),
+	)
+	res := df.aggregateByRowsAndColumns(
+		[]string{"key1", "key2"},
+		[]string{},
+		[]PivotValue{
+			{Colname: "key1", AggregationType: Aggregation_MAX},
+			{Colname: "key2", AggregationType: Aggregation_MIN},
+			{Colname: "values", AggregationType: Aggregation_COUNT},
+			{Colname: "values2", AggregationType: Aggregation_SUM},
+			{Colname: "contact_test", AggregationType: Aggregation_CONCAT, ContactSparator: "+"},
+			{Colname: "contact_test_2", AggregationType: Aggregation_CONCAT, ContactSparator: nil},
+		},
+	)
+	for _, m := range res.Maps() {
+		fmt.Println("[AggregateByRowsAndColumns] m[contact_test_CONCAT] = ", m["contact_test_CONCAT"])     // b+d a+c e
+		fmt.Println("[AggregateByRowsAndColumns] m[contact_test_2_CONCAT] = ", m["contact_test_2_CONCAT"]) // b,d a,c e
+	}
+}
+
 func TestDataFrame_Aggregation(t *testing.T) {
 	a := New(
 		series.New([]string{"b", "a", "b", "a", "b"}, series.String, "key1"),
 		series.New([]int{1, 2, 1, 2, 2}, series.Int, "key2"),
 		series.New([]float64{3.0, 4.0, 5.3, 3.2, 1.2}, series.Float, "values"),
 		series.New([]float64{3.0, 4.0, 5.3, 3.2, 1.2}, series.Float, "values2"),
+		series.New([]string{"a", "b", "c", "d", "e"}, series.String, "contact_test"),
+		series.New([]string{"a", "b", "c", "d", "e"}, series.String, "contact_test_2"),
 	)
 	groups := a.GroupBy("key1", "key2")
-	df := groups.Aggregation([]AggregationType{Aggregation_MAX, Aggregation_MIN, Aggregation_COUNT, Aggregation_SUM}, []string{"values", "values2", "values2", "values2"})
+	df := groups.Aggregation(
+		[]AggregationType{Aggregation_MAX, Aggregation_MIN, Aggregation_COUNT, Aggregation_SUM, Aggregation_CONCAT, Aggregation_CONCAT},
+		[]string{"values", "values2", "values2", "values2", "contact_test", "contact_test_2"},
+		[]string{"", "", "", "", ";", ""})
 	resultMap := make(map[string]float32, 3)
 	resultMap[fmt.Sprintf("%s_%d", "a", 2)] = 4
 	resultMap[fmt.Sprintf("%s_%d", "b", 1)] = 5.3
@@ -2982,6 +3014,8 @@ func TestDataFrame_Aggregation(t *testing.T) {
 		if !IsEqual(m["values_MAX"].(float64), float64(resultMap[key])) {
 			t.Errorf("Aggregation: expect %f , but got %f", float64(resultMap[key]), m["values"].(float64))
 		}
+		fmt.Println("[Aggregation] m[contact_test_CONCAT] = ", m["contact_test_CONCAT"])     // a;c  b;d  e
+		fmt.Println("[Aggregation] m[contact_test_2_CONCAT] = ", m["contact_test_2_CONCAT"]) // ac bd e
 	}
 }
 

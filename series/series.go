@@ -822,7 +822,7 @@ func (s Series) Sum() float64 {
 }
 
 // ConcatString join the value of a series with ','
-func (s Series) ConcatString() string {
+func (s Series) ConcatString(separator string) string {
 	if s.elements.Len() == 0 {
 		return ""
 	}
@@ -832,7 +832,7 @@ func (s Series) ConcatString() string {
 
 		ret[i] = e.String()
 	}
-	return strings.Join(ret, ",")
+	return strings.Join(ret, separator)
 }
 
 // Slice slices Series from j to k-1 index.
