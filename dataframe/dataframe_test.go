@@ -3001,10 +3001,14 @@ func TestDataFrame_Aggregation(t *testing.T) {
 		series.New([]string{"a", "b", "c", "d", "e"}, series.String, "contact_test_2"),
 	)
 	groups := a.GroupBy("key1", "key2")
-	df := groups.Aggregation(
-		[]AggregationType{Aggregation_MAX, Aggregation_MIN, Aggregation_COUNT, Aggregation_SUM, Aggregation_CONCAT, Aggregation_CONCAT},
-		[]string{"values", "values2", "values2", "values2", "contact_test", "contact_test_2"},
-		[]string{"", "", "", "", ";", ""})
+	df := groups.Aggregation([]AggregateOpt{
+		{Aggregation_MAX, "values", ""},
+		{Aggregation_MIN, "values2", ""},
+		{Aggregation_COUNT, "values2", ""},
+		{Aggregation_SUM, "values2", ""},
+		{Aggregation_CONCAT, "contact_test", ";"},
+		{Aggregation_CONCAT, "contact_test_2", ""},
+	})
 	resultMap := make(map[string]float32, 3)
 	resultMap[fmt.Sprintf("%s_%d", "a", 2)] = 4
 	resultMap[fmt.Sprintf("%s_%d", "b", 1)] = 5.3
